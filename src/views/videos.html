@@ -106,92 +106,106 @@
     let recognition = null;
     let isRecognizing = false;
     let finalTranscript = '';
+    let audioContext = null;
+    let mediaStreamDestination = null;
+    let mediaElementSource = null;
     const startButton = document.getElementById('startButton');
     const stopButton = document.getElementById('stopButton');
     const status = document.getElementById('status');
     const error = document.getElementById('error');
     const transcription = document.getElementById('transcription');
+    const videoPlayer = document.getElementById('videoPlayer');
 
-    function startRecognition() {
+    // 動画の音声ストリームを取得して認識を開始
+    async function startRecognitionFromVideo() {
       if (isRecognizing) {
         return;
       }
 
-      // Web Speech APIの初期化
-      recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-      recognition.lang = 'ja-JP';
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.maxAlternatives = 1;
+      try {
+        // AudioContextの初期化
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        mediaStreamDestination = audioContext.createMediaStreamDestination();
+        
+        // 動画の音声をMediaStreamDestinationに接続
+        mediaElementSource = audioContext.createMediaElementSource(videoPlayer);
+        mediaElementSource.connect(mediaStreamDestination);
+        mediaElementSource.connect(audioContext.destination); // スピーカー出力も維持
 
-      // 音声認識の結果を処理
-      recognition.onresult = (event) => {
-        let interimTranscript = '';
+        // Web Speech APIの初期化
+        recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+        recognition.lang = 'ja-JP';
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.maxAlternatives = 1;
 
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcript = event.results[i][0].transcript;
-          if (event.results[i].isFinal) {
-            finalTranscript += transcript + '\n';
-            // 最終結果を表示
-            updateTranscription(finalTranscript);
-          } else {
-            interimTranscript += transcript;
-            // 中間結果を表示
-            updateTranscription(finalTranscript + '\n' + interimTranscript);
+        // 音声認識の結果を処理
+        recognition.onresult = (event) => {
+          let interimTranscript = '';
+
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const transcript = event.results[i][0].transcript;
+            if (event.results[i].isFinal) {
+              finalTranscript += transcript + '\n';
+              updateTranscription(finalTranscript);
+            } else {
+              interimTranscript += transcript;
+              updateTranscription(finalTranscript + '\n' + interimTranscript);
+            }
           }
-        }
-      };
+        };
 
-      // 音声認識の開始
-      recognition.onstart = () => {
-        isRecognizing = true;
-        startButton.disabled = true;
-        stopButton.disabled = false;
-        status.textContent = '音声認識中...';
-        error.textContent = '';
-      };
+        // 音声認識の開始
+        recognition.onstart = () => {
+          isRecognizing = true;
+          startButton.disabled = true;
+          stopButton.disabled = false;
+          status.textContent = '音声認識中...';
+          error.textContent = '';
+        };
 
-      // 音声認識の終了
-      recognition.onend = () => {
-        if (isRecognizing) {
-          // 認識が継続中の場合は再開
-          try {
-            recognition.start();
-          } catch (e) {
-            error.textContent = `音声認識の再開に失敗しました: ${e.message}`;
+        // 音声認識の終了
+        recognition.onend = () => {
+          if (isRecognizing) {
+            try {
+              recognition.start(mediaStreamDestination.stream.getAudioTracks()[0]);
+            } catch (e) {
+              error.textContent = `音声認識の再開に失敗しました: ${e.message}`;
+              isRecognizing = false;
+              startButton.disabled = false;
+              stopButton.disabled = true;
+            }
+          } else {
+            startButton.disabled = false;
+            stopButton.disabled = true;
+            status.textContent = '準備完了';
+          }
+        };
+
+        // エラー処理
+        recognition.onerror = (event) => {
+          console.error('Speech recognition error:', event.error);
+          if (event.error === 'no-speech') {
+            try {
+              recognition.start(mediaStreamDestination.stream.getAudioTracks()[0]);
+            } catch (e) {
+              error.textContent = `音声認識の再開に失敗しました: ${e.message}`;
+            }
+          } else {
+            error.textContent = `エラーが発生しました: ${event.error}`;
             isRecognizing = false;
             startButton.disabled = false;
             stopButton.disabled = true;
           }
-        } else {
-          startButton.disabled = false;
-          stopButton.disabled = true;
-          status.textContent = '準備完了';
-        }
-      };
+        };
 
-      // エラー処理
-      recognition.onerror = (event) => {
-        console.error('Speech recognition error:', event.error);
-        if (event.error === 'no-speech') {
-          // 無音の場合は再開を試みる
-          try {
-            recognition.start();
-          } catch (e) {
-            error.textContent = `音声認識の再開に失敗しました: ${e.message}`;
-          }
-        } else {
-          error.textContent = `エラーが発生しました: ${event.error}`;
-          isRecognizing = false;
-          startButton.disabled = false;
-          stopButton.disabled = true;
-        }
-      };
+        // 動画の音声ストリームを使用して認識を開始
+        videoPlayer.play();
+        recognition.start(mediaStreamDestination.stream.getAudioTracks()[0]);
 
-      try {
-        recognition.start();
       } catch (e) {
         error.textContent = `音声認識を開始できません: ${e.message}`;
+        console.error('Error starting recognition:', e);
       }
     }
 
@@ -199,6 +213,14 @@
       if (recognition) {
         isRecognizing = false;
         recognition.stop();
+        
+        // 音声ストリームの接続を解除
+        if (mediaElementSource) {
+          mediaElementSource.disconnect();
+        }
+        if (audioContext) {
+          audioContext.close();
+        }
       }
     }
 
@@ -229,6 +251,8 @@
           videoItem.onclick = () => {
             videoPlayer.src = `/tmp/${video.name}`;
             videoPlayer.play();
+            // 動画クリック時に音声認識を開始
+            startRecognitionFromVideo();
           };
           videoList.appendChild(videoItem);
         });
