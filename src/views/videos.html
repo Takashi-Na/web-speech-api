@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>音声文字起こし</title>
+  <title>Web Speech API demo</title>
   <style>
     body { 
       font-family: Arial, sans-serif; 
@@ -54,6 +54,30 @@
       color: #666;
       font-style: italic;
     }
+    .video-container {
+      margin-top: 30px;
+      padding: 15px;
+      background-color: #f5f5f5;
+      border-radius: 4px;
+    }
+    .video-list {
+      margin-top: 10px;
+    }
+    .video-item {
+      margin: 10px 0;
+      padding: 10px;
+      background-color: white;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .video-item:hover {
+      background-color: #e0e0e0;
+    }
+    video {
+      width: 100%;
+      max-width: 800px;
+      margin-top: 10px;
+    }
   </style>
 </head>
 <body>
@@ -70,6 +94,12 @@
     <div class="error" id="error"></div>
     
     <div class="transcription" id="transcription"></div>
+  </div>
+
+  <div class="video-container">
+    <h2>動画再生</h2>
+    <div class="video-list" id="videoList"></div>
+    <video id="videoPlayer" controls></video>
   </div>
 
   <script>
@@ -183,6 +213,32 @@
       // 自動スクロール
       transcription.scrollTop = transcription.scrollHeight;
     }
+
+    // 動画リストの取得と表示
+    async function loadVideos() {
+      try {
+        const response = await fetch('/api/videos');
+        const videos = await response.json();
+        const videoList = document.getElementById('videoList');
+        const videoPlayer = document.getElementById('videoPlayer');
+
+        videos.forEach(video => {
+          const videoItem = document.createElement('div');
+          videoItem.className = 'video-item';
+          videoItem.textContent = video.name;
+          videoItem.onclick = () => {
+            videoPlayer.src = `/tmp/${video.name}`;
+            videoPlayer.play();
+          };
+          videoList.appendChild(videoItem);
+        });
+      } catch (error) {
+        console.error('動画リストの取得に失敗しました:', error);
+      }
+    }
+
+    // ページ読み込み時に動画リストを取得
+    window.addEventListener('load', loadVideos);
   </script>
 </body>
 </html> 
