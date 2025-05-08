@@ -7,6 +7,7 @@ const fs = require('fs');
 // 静的ファイルの提供
 app.use(express.static('public'));
 app.use('/tmp', express.static('tmp'));
+app.use(express.static(path.join(__dirname, 'views')));
 
 // 動画一覧を取得するAPIエンドポイント
 app.get('/api/videos', (req, res) => {
